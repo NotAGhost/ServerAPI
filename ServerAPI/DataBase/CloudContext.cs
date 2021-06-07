@@ -1,8 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Security.Cryptography.X509Certificates;
-using System.Threading.Tasks;
+﻿using System.IO;
 using Microsoft.EntityFrameworkCore;
 using ServerAPI.Models;
 
@@ -13,11 +9,13 @@ namespace ServerAPI.DataBase {
         }
 
         public DbSet<Folder> CloudFolders { get; set; }
-        public DbSet<Files> CloudFiles { get; set; }
+        public DbSet<Files> CloudFilesModel { get; set; }
+        public DbSet<FilesContent> CloudFilesContent { get; set; }
 
 
         protected override void OnModelCreating(ModelBuilder modelBuilder) {
             modelBuilder.Entity<Files>().ToTable("FileTable");
+            modelBuilder.Entity<FilesContent>().ToTable("FilesContentTable");
             modelBuilder.Entity<Folder>().ToTable("FolderTable");
 
             modelBuilder.Entity<Files>()
@@ -32,6 +30,13 @@ namespace ServerAPI.DataBase {
                 .IsRequired(false)
                 .OnDelete(DeleteBehavior.Restrict);
 
+            modelBuilder.Entity<Files>()
+                .HasOne(p => p.FileContent)
+                .WithOne(p => p.FileModel)
+                .HasForeignKey<FilesContent>(k => k.FilesDataId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<FilesContent>().HasKey(p => p.ContentId);
 
         }
     }

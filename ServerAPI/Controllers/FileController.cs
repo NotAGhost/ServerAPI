@@ -19,54 +19,49 @@ namespace ServerAPI.Controllers {
         [HttpGet]
         public async Task<IActionResult> GetAll() {
 
-
-            return Ok(await _context.CloudFiles.Select(p => new Files {
-                FilesId = p.FilesId,
-                FileName = p.FileName,
-                ParentFolderId = p.ParentFolderId,
-                Size = p.Size
-            }).ToListAsync());
-
-
+            return Ok(await _context.CloudFilesModel.ToListAsync());
         }
 
         [HttpGet("{id}")]
         public async Task<IActionResult> Get(int id) {
-            var file = await _context.CloudFiles.Select(p => new Files {
-                FilesId = p.FilesId,
-                FileName = p.FileName,
-                ParentFolderId = p.ParentFolderId,
-                Size = p.Size
-            }).FirstOrDefaultAsync(p => p.FilesId == id);
+            var file = await _context.CloudFilesModel.FirstOrDefaultAsync(p => p.FilesId == id);
 
             return file == null ? (IActionResult) NotFound() : Ok(file);
         }
 
+        //Needs some work 
         [HttpPost]
         [DisableRequestSizeLimit]
-        public async Task<IActionResult> Post([FromBody] ContentU value) {
+        public async Task<IActionResult> Post([FromBody] FileData value) {
 
             var newFile = new Files {
                 FileName = value.FileName,
                 ParentFolderId = value.ParentFolderId,
-                TruePath = value.FilePath,
-                Bytes = value.Content,
-                Size = value.Content.Length
+                Size = value.Content.Length.ToString()
             };
 
             try {
-                if (_context.CloudFiles.FirstOrDefaultAsync(p =>
+
+                if (await _context.CloudFilesModel.FirstOrDefaultAsync(p =>
                     p.ParentFolderId == newFile.ParentFolderId && p.FileName == newFile.FileName) != null)
                     return BadRequest("File Already exists");
 
                 var parentFolder =
                     await _context.CloudFolders.FirstOrDefaultAsync(p => p.FolderId == newFile.ParentFolderId);
 
+                //Virtual Path
+                newFile.VirtualPath = parentFolder.TruePath + "/" + newFile.FileName;
+
+                newFile.FileContent = new FilesContent {
+                    FileBytes = value.Content
+                };
+
                 parentFolder.Files.Add(newFile);
 
                 _context.CloudFolders.Update(parentFolder);
                 await _context.SaveChangesAsync();
-                newFile.Bytes = new byte[0];
+
+                //Create Content Entry
 
                 return Ok(newFile);
             }
@@ -78,24 +73,36 @@ namespace ServerAPI.Controllers {
         [HttpGet("Download/{id}")]
         public async Task<IActionResult> DownloadFile(int id) {
 
-            var file = await _context.CloudFiles.FirstOrDefaultAsync(p => p.FilesId == id);
+            var file = await _context.CloudFilesContent.FirstOrDefaultAsync(p => p.FilesDataId == id);
 
-            return file == null ? (IActionResult)NotFound() : Ok(file);
-
+            return file == null ? (IActionResult) NotFound() : Ok(file);
         }
 
         [HttpPut("{id}")]
-        public async Task<IActionResult> Put(int id, [FromBody] ContentU value) {
-            var oldFile = await _context.CloudFiles.FirstOrDefaultAsync(p => p.FilesId == id);
+        public async Task<IActionResult> Put(int id, [FromBody] FileData value) {
+
+            var oldFile = await _context.CloudFilesModel.FirstOrDefaultAsync(p => p.FilesId == id);
 
             if (oldFile == null) return NotFound("File not found");
 
-            oldFile.FileName = value.FileName;
             oldFile.ParentFolderId = value.ParentFolderId;
+
             try {
-                _context.CloudFiles.Update(oldFile);
+
+                if (value.FileName != oldFile.FileName) {
+                    var oldFileContent = await _context.CloudFilesContent
+                        .FirstOrDefaultAsync(p => p.FilesDataId == oldFile.FilesId);
+
+                    oldFileContent.FileBytes = value.Content;
+                    oldFile.FileName = value.FileName;
+
+                    _context.CloudFilesContent.Update(oldFileContent);
+
+                }
+
+                _context.CloudFilesModel.Update(oldFile);
                 await _context.SaveChangesAsync();
-                oldFile.Bytes =new byte[0];
+
                 return Ok(oldFile);
             }
             catch (Exception e) {
@@ -105,11 +112,13 @@ namespace ServerAPI.Controllers {
 
         [HttpDelete("{id}")]
         public async Task<IActionResult> Delete(int id) {
-            var oldFile = await _context.CloudFiles.FirstOrDefaultAsync(p => p.FilesId == id);
+
+            var oldFile = await _context.CloudFilesModel.FirstOrDefaultAsync(p => p.FilesId == id);
+
             if (oldFile == null) return NotFound("File not found");
 
             try {
-                _context.CloudFiles.Remove(oldFile);
+                _context.CloudFilesModel.Remove(oldFile);
                 await _context.SaveChangesAsync();
                 return Accepted();
             }
@@ -118,11 +127,18 @@ namespace ServerAPI.Controllers {
             }
         }
 
-        public class ContentU {
-            public string FileName { get; set; }
-            public int ParentFolderId { get; set; }
-            public string FilePath { get; set; }
-            public byte[] Content { get; set; }
+        /*
+        [HttpDelete("DeleteAll")]
+        public async Task<IActionResult> DeleteAll() {
+            try {
+                _context.CloudFiles.RemoveRange(_context.CloudFiles);
+                await _context.SaveChangesAsync();
+                return Accepted();
+            }
+            catch (Exception e) {
+                return BadRequest(e);
+            }
         }
+        */
     }
 }

@@ -1,8 +1,8 @@
-﻿using Microsoft.AspNetCore.Mvc;
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using ServerAPI.DataBase;
 using ServerAPI.Models;
@@ -13,9 +13,6 @@ namespace ServerAPI.Controllers {
     [Route("api/[controller]")]
     [ApiController]
     public class FolderController : ControllerBase {
-        // GET: api/<FolderController>
-
-
         private readonly CloudContext _context;
 
         public FolderController(CloudContext context) {
@@ -25,7 +22,11 @@ namespace ServerAPI.Controllers {
 
         [HttpGet]
         public async Task<IActionResult> GetAll() {
-            return Ok(await _context.CloudFolders.Include(p=>p.Folders).Where(p=>p.ParentFolderId==null).ToListAsync());
+            var list = await _context.CloudFolders.ToListAsync();
+
+            list.RemoveAll(p => p.ParentFolderId != null);
+
+            return Ok(list);
         }
 
 
@@ -35,6 +36,15 @@ namespace ServerAPI.Controllers {
             var folder = await _context.CloudFolders.FirstOrDefaultAsync(p => p.FolderId == id);
             return folder == null ? (IActionResult) NotFound() : Ok(folder);
         }
+
+        // GET api/<FolderController>/5
+        [HttpGet("{id}/Files")]
+        public async Task<IActionResult> GetFolderFiles(int id) {
+            var files = await _context.CloudFilesModel.Where(p => p.ParentFolderId == id).ToListAsync();
+
+            return files == null ? (IActionResult) NotFound() : Ok(files);
+        }
+
 
         // POST api/<FolderController>
         [HttpPost]
@@ -49,7 +59,6 @@ namespace ServerAPI.Controllers {
                 ParentFolderId = value.ParentFolderId,
                 Name = value.Name,
                 TruePath = value.Path
-
             };
 
             await _context.CloudFolders.AddAsync(entity);
@@ -84,7 +93,7 @@ namespace ServerAPI.Controllers {
         [HttpDelete("{id}")]
         public async Task<IActionResult> Delete(int id) {
 
-            var oldFolder = await _context.CloudFolders.Include(p => p.Folders).Include(p => p.Files)
+            var oldFolder = await _context.CloudFolders.Include(p => p.Folders).ThenInclude(p => p.Files)
                 .FirstOrDefaultAsync(p => p.FolderId == id);
 
             if (oldFolder == null) return NotFound("File not found");
@@ -106,17 +115,15 @@ namespace ServerAPI.Controllers {
             foreach (var folder in parent.Folders) {
 
                 if (folder.Folders.Count == 0) {
-                    if (folder.Files.Count == 0) {
-                        continue;
-                    }
+                    if (folder.Files.Count == 0) continue;
 
-                    _context.CloudFiles.RemoveRange(folder.Files);
+                    _context.CloudFilesModel.RemoveRange(folder.Files);
                     continue;
 
                 }
 
                 DeleteAllFolders(folder);
-                _context.CloudFiles.RemoveRange(folder.Files);
+                _context.CloudFilesModel.RemoveRange(folder.Files);
                 _context.CloudFolders.Remove(folder);
             }
 
